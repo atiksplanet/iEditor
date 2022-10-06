@@ -36,7 +36,7 @@ struct DashboardView: View {
                             .frame(width: 24, height: 24)
                             .padding(4)
                             .background(Color.black.opacity(0.5))
-                            .foregroundColor(.white)
+                            .foregroundColor(.red)
                     }
                 }
                 
