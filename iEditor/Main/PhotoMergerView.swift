@@ -18,7 +18,7 @@ struct PhotoMergerView: View {
     
     @ObservedObject var mediaItems: PickedMediaItems
     @ObservedObject var videoItems = PickedMediaItems()
-    static var finalMoviePath: URL? = nil
+    static private var finalMoviePath: URL? = nil
     
     var body: some View {
         VStack {
@@ -47,7 +47,7 @@ struct PhotoMergerView: View {
                     showVideoPlayer.toggle()
                 }
             } label: {
-                Text(PhotoMergerView.finalMoviePath != nil ? "Play Result Again" : "Merge Videos")
+                Text(PhotoMergerView.finalMoviePath != nil ? "Play Result" : "Merge Videos")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -72,11 +72,16 @@ struct PhotoMergerView: View {
         }
         .toolbar(content: {
             ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Apply Filter") {
+                    let urls = videoItems.items.compactMap({ $0.url })
+                    applyFilter(urls)
+                }
+                .buttonStyle(.bordered)
+            }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
                 ActivityIndicator(isAnimating: loading)
                     .configure { $0.color = .systemMint }
-                    .padding()
-                    //.background(Color.blue)
-                    //.cornerRadius(100)
             }
         })
         .alert(
@@ -90,16 +95,16 @@ struct PhotoMergerView: View {
             Text("Not enough images to perform the operation, Better go back to Dashboard & select more images")
         }
         .sheet(isPresented: $showVideoPlayer) {
-            if let url = PhotoMergerView.finalMoviePath {
-                VideoPlayer(player: AVPlayer(url: url))
-            } else {
-                Text("Error to merge videos")
-            }
+            VideoPlayerView(finalMoviePath: PhotoMergerView.finalMoviePath)
         }
     }
 }
 
 fileprivate extension PhotoMergerView {
+    func applyFilter(_ urls: [URL]) {
+        
+    }
+    
     func doMergePhotos(_ images: [UIImage]) {
         loading = true
         VideoGenerator.current.generate(withImages: images) { progress in
