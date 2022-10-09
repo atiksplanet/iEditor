@@ -12,9 +12,13 @@ struct PhotoMergerView: View {
     @Environment(\.presentationMode) var mode: Binding<PresentationMode>
     @State private var showPopUp = false
     @State private var loading = false
+    @State private var showDialog = false
+    
+    @State private var showVideoPlayer = false
     
     @ObservedObject var mediaItems: PickedMediaItems
     @ObservedObject var videoItems = PickedMediaItems()
+    static var finalMoviePath: URL? = nil
     
     var body: some View {
         VStack {
@@ -34,8 +38,24 @@ struct PhotoMergerView: View {
                         .foregroundColor(.white)
                 }
             }
+            
+            Button {
+                if PhotoMergerView.finalMoviePath == nil {
+                    let urls = videoItems.items.compactMap({ $0.url })
+                    doMerge(urls)
+                } else {
+                    showVideoPlayer.toggle()
+                }
+            } label: {
+                Text(PhotoMergerView.finalMoviePath != nil ? "Play Result Again" : "Merge Videos")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .font(.largeTitle)
+            .padding([.leading, .trailing], 10)
         }
         .onAppear() {
+            PhotoMergerView.finalMoviePath = nil
             let imageItems = mediaItems.items.filter({ $0.mediaType == .photo })
             let videoItems = mediaItems.items.filter({ $0.mediaType == .video })
             videoItems.forEach { item in
@@ -43,23 +63,8 @@ struct PhotoMergerView: View {
             }
             showPopUp = imageItems.count < 2 || videoItems.count < 2
             if !showPopUp {
-                loading = true
                 let images = imageItems.compactMap({ $0.photo })
-                VideoGenerator.current.generate(withImages: images) { progress in
-                    if progress.isFinished {
-                        loading = false
-                    }
-                } outcome: { result in
-                    switch result {
-                    case .success(let url):
-                        print("Success to create video")
-                        let newItem = PhotoPickerModel(with: url)
-                        self.videoItems.items.insert(newItem, at: 0)
-                    case .failure(let error):
-                        print("Failed to create video: \(error)")
-                    }
-                }
-
+                doMergePhotos(images)
             }
         }
         .onDisappear() {
@@ -74,16 +79,59 @@ struct PhotoMergerView: View {
                     //.cornerRadius(100)
             }
         })
-        .confirmationDialog(
-            "Back to Dashboard",
+        .alert(
+            Text("Back to Dashboard"),
             isPresented: $showPopUp
         ) {
-            Button("Back", role: .destructive) {
-                // Handle empty trash action.
+            Button("Back") {
                 self.mode.wrappedValue.dismiss()
             }
         } message: {
             Text("Not enough images to perform the operation, Better go back to Dashboard & select more images")
+        }
+        .sheet(isPresented: $showVideoPlayer) {
+            if let url = PhotoMergerView.finalMoviePath {
+                VideoPlayer(player: AVPlayer(url: url))
+            } else {
+                Text("Error to merge videos")
+            }
+        }
+    }
+}
+
+fileprivate extension PhotoMergerView {
+    func doMergePhotos(_ images: [UIImage]) {
+        loading = true
+        VideoGenerator.current.generate(withImages: images) { progress in
+            if progress.isFinished {
+                loading = false
+            }
+        } outcome: { result in
+            switch result {
+            case .success(let url):
+                print("Success to create video")
+                let newItem = PhotoPickerModel(with: url)
+                self.videoItems.items.insert(newItem, at: 0)
+            case .failure(let error):
+                print("Failed to create video: \(error)")
+            }
+        }
+    }
+    
+    func doMerge(_ urls: [URL]) {
+        loading.toggle()
+        VideoGenerator.mergeMovies(videoURLs: urls) { result in
+            loading.toggle()
+            switch result {
+            case .success(let success):
+                //print("Success to create video: \(success)")
+                PhotoMergerView.finalMoviePath = success
+                showVideoPlayer.toggle()
+            case .failure(let failure):
+                print("Failed to create video: \(failure)")
+                PhotoMergerView.finalMoviePath = nil
+                showVideoPlayer.toggle()
+            }
         }
     }
 }

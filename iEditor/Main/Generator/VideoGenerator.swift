@@ -190,11 +190,11 @@ public class VideoGenerator: NSObject {
                             // the completion is made with a completion handler which will return the url of the generated video or an error
                             videoWriter.finishWriting { () -> Void in
                                 if let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
-                                    let newPath = URL(fileURLWithPath: documentsPath).appendingPathComponent("\(VideoGenerator.fileName).m4v")
+                                    let newPath = URL(fileURLWithPath: documentsPath).appendingPathComponent("MergedPhotos.m4v")
                                     self?.deleteFile(pathURL: newPath, completion: {
                                         try FileManager.default.moveItem(at: videoOutputURL, to: newPath)
                                     })
-                                    print("Mergd Video Saved to: \(newPath)")
+                                    print("Merged Video Saved to: \(newPath)")
                                     DispatchQueue.main.async {
                                         outcome(.success(newPath))
                                     }
@@ -251,7 +251,7 @@ public class VideoGenerator: NSObject {
         
         if let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first {
             /// create a path to the video file
-            completeMoviePath = URL(fileURLWithPath: documentsPath).appendingPathComponent("\(VideoGenerator.fileName).m4v")
+            completeMoviePath = URL(fileURLWithPath: documentsPath).appendingPathComponent("MergedVideos.m4v")
             
             if let completeMoviePath = completeMoviePath {
                 if FileManager.default.fileExists(atPath: completeMoviePath.path) {
@@ -276,23 +276,32 @@ public class VideoGenerator: NSObject {
         if let completeMoviePath = completeMoviePath {
             
             /// add audio and video tracks to the composition
-            if let videoTrack: AVMutableCompositionTrack = composition.addMutableTrack(withMediaType: AVMediaType.video, preferredTrackID: kCMPersistentTrackID_Invalid), let audioTrack: AVMutableCompositionTrack = composition.addMutableTrack(withMediaType: AVMediaType.audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            if let videoTrack: AVMutableCompositionTrack = composition.addMutableTrack(withMediaType: AVMediaType.video, preferredTrackID: kCMPersistentTrackID_Invalid)/*, let audioTrack: AVMutableCompositionTrack = composition.addMutableTrack(withMediaType: AVMediaType.audio, preferredTrackID: kCMPersistentTrackID_Invalid)*/ {
                 
                 var insertTime = CMTime(seconds: 0, preferredTimescale: 1)
                 
                 /// for each URL add the video and audio tracks and their duration to the composition
                 for sourceAsset in videoAssets {
+                    //print("Description: \(sourceAsset.description)")
+                    //print("[tracks] \(sourceAsset.tracks(withMediaType: .video))")
                     do {
-                        if let assetVideoTrack = sourceAsset.tracks(withMediaType: .video).first, let assetAudioTrack = sourceAsset.tracks(withMediaType: .audio).first {
+                        if let assetVideoTrack = sourceAsset.tracks(withMediaType: .video).first/*, let assetAudioTrack = sourceAsset.tracks(withMediaType: .audio).first*/ {
                             let frameRange = CMTimeRange(start: CMTime(seconds: 0, preferredTimescale: 1), duration: sourceAsset.duration)
                             try videoTrack.insertTimeRange(frameRange, of: assetVideoTrack, at: insertTime)
-                            try audioTrack.insertTimeRange(frameRange, of: assetAudioTrack, at: insertTime)
+                            //try audioTrack.insertTimeRange(frameRange, of: assetAudioTrack, at: insertTime)
                             
                             videoTrack.preferredTransform = assetVideoTrack.preferredTransform
+                        } else {
+                            print("[Error] Failed to get media")
                         }
                         
+                        
+                        //print("[Duration] \(sourceAsset.duration)")
+                        
                         insertTime = insertTime + sourceAsset.duration
+                        
                     } catch {
+                        //print("[Error] \(error)")
                         DispatchQueue.main.async {
                             outcome(.failure(error))
                         }
@@ -323,7 +332,7 @@ public class VideoGenerator: NSObject {
                             }
                             
                         default:
-                            print("finished")
+                            print("Merged Video Saved to: \(completeMoviePath)")
                             DispatchQueue.main.async {
                                 outcome(.success(completeMoviePath))
                             }
