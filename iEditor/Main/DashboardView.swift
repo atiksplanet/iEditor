@@ -64,11 +64,15 @@ struct DashboardView: View {
                         showPopUp = true
                     } label: {
                         Image(systemName: "trash.fill")
+                            .foregroundColor(Color.red)
                     }
                 }
             })
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.automatic)
+        }
+        .onDisappear() {
+            mediaItems.deleteAll()
         }
         .sheet(isPresented: $showPicker) {
             MediaPicker(mediaItems: mediaItems) { didSelectItem in
