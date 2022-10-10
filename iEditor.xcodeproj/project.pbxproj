@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4700C86D28F49C8600B93418 /* mixaund-bright-morning.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 4700C86C28F49C8600B93418 /* mixaund-bright-morning.mp3 */; };
 		4718F35428EF6EC100FF82A9 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4718F35328EF6EC100FF82A9 /* DashboardView.swift */; };
 		4718F35628EF6ECE00FF82A9 /* PhotoMergerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4718F35528EF6ECE00FF82A9 /* PhotoMergerView.swift */; };
 		47476AB428F2CA1B00B5C33D /* VideoGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47476AB328F2CA1B00B5C33D /* VideoGenerator.swift */; };
@@ -43,6 +44,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		4700C86C28F49C8600B93418 /* mixaund-bright-morning.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "mixaund-bright-morning.mp3"; sourceTree = "<group>"; };
 		4718F34E28EF6C3500FF82A9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4718F35328EF6EC100FF82A9 /* DashboardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		4718F35528EF6ECE00FF82A9 /* PhotoMergerView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PhotoMergerView.swift; sourceTree = "<group>"; };
@@ -90,6 +92,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		4700C86B28F49C8600B93418 /* Media */ = {
+			isa = PBXGroup;
+			children = (
+				4700C86C28F49C8600B93418 /* mixaund-bright-morning.mp3 */,
+			);
+			path = Media;
+			sourceTree = "<group>";
+		};
 		4718F34F28EF6E0F00FF82A9 /* Main */ = {
 			isa = PBXGroup;
 			children = (
@@ -158,6 +168,7 @@
 				4718F34F28EF6E0F00FF82A9 /* Main */,
 				4718F34E28EF6C3500FF82A9 /* Info.plist */,
 				47BAE9A528EF6A260047AF9B /* Assets.xcassets */,
+				4700C86B28F49C8600B93418 /* Media */,
 				47BAE9A728EF6A260047AF9B /* Preview Content */,
 			);
 			path = iEditor;
@@ -292,6 +303,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4700C86D28F49C8600B93418 /* mixaund-bright-morning.mp3 in Resources */,
 				47BAE9A928EF6A260047AF9B /* Preview Assets.xcassets in Resources */,
 				47BAE9A628EF6A260047AF9B /* Assets.xcassets in Resources */,
 			);

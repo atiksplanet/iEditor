@@ -195,3 +195,22 @@ extension UIImage {
         }
     }
 }
+
+extension FileManager {
+    func removeItemIfExisted(_ url:URL) -> Void {
+        if FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try FileManager.default.removeItem(atPath: url.path)
+            }
+            catch {
+                debugPrint("Failed to delete file")
+            }
+        }
+    }
+}
+
+extension Date {
+    var ticks: UInt64 {
+        return UInt64((self.timeIntervalSince1970 + 62_135_596_800) * 10_000_000)
+    }
+}

@@ -47,7 +47,7 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .font(.largeTitle)
+                .font(.title)
                 .padding([.leading, .trailing], 10)
             })
             .toolbar(content: {

@@ -51,7 +51,7 @@ struct PhotoMergerView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .font(.largeTitle)
+            .font(.title)
             .padding([.leading, .trailing], 10)
         }
         .onAppear() {
@@ -64,21 +64,13 @@ struct PhotoMergerView: View {
             showPopUp = imageItems.count < 2 || videoItems.count < 2
             if !showPopUp {
                 let images = imageItems.compactMap({ $0.photo })
-                doMergePhotos(images)
+                doMergePhotos(images, filter: "CISepiaTone")
             }
         }
         .onDisappear() {
             videoItems.items.removeAll()
         }
         .toolbar(content: {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Apply Filter") {
-                    let urls = videoItems.items.compactMap({ $0.url })
-                    applyFilter(urls)
-                }
-                .buttonStyle(.bordered)
-            }
-            
             ToolbarItem(placement: .navigationBarTrailing) {
                 ActivityIndicator(isAnimating: loading)
                     .configure { $0.color = .systemMint }
@@ -101,11 +93,7 @@ struct PhotoMergerView: View {
 }
 
 fileprivate extension PhotoMergerView {
-    func applyFilter(_ urls: [URL]) {
-        
-    }
-    
-    func doMergePhotos(_ images: [UIImage]) {
+    func doMergePhotos(_ images: [UIImage], filter: String = "CISepiaTone") {
         loading = true
         VideoGenerator.current.generate(withImages: images) { progress in
             if progress.isFinished {
@@ -114,9 +102,17 @@ fileprivate extension PhotoMergerView {
         } outcome: { result in
             switch result {
             case .success(let url):
+                loading = true
                 print("Success to create video")
-                let newItem = PhotoPickerModel(with: url)
-                self.videoItems.items.insert(newItem, at: 0)
+                let asset = AVAsset(url: url)
+                VideoGenerator.current.ApplyFilter(video: asset, filter: filter) { url, error in
+                    loading = false
+                    guard let url = url else {
+                        return
+                    }
+                    let newItem = PhotoPickerModel(with: url)
+                    self.videoItems.items.insert(newItem, at: 0)
+                }
             case .failure(let error):
                 print("Failed to create video: \(error)")
             }
@@ -124,19 +120,33 @@ fileprivate extension PhotoMergerView {
     }
     
     func doMerge(_ urls: [URL]) {
+        guard loading == false else {
+            return
+        }
+        
         loading.toggle()
-        VideoGenerator.mergeMovies(videoURLs: urls) { result in
-            loading.toggle()
-            switch result {
-            case .success(let success):
-                //print("Success to create video: \(success)")
-                PhotoMergerView.finalMoviePath = success
-                showVideoPlayer.toggle()
-            case .failure(let failure):
-                print("Failed to create video: \(failure)")
+        let assets = urls.map({ AVAsset(url: $0) })
+        VideoGenerator.current.mergeWithAnimation(arrayVideos: assets) { newUrl, error in
+            guard let url = newUrl else {
+                //print("Failed to create video: \(String(describing: error))")
+                loading.toggle()
                 PhotoMergerView.finalMoviePath = nil
                 showVideoPlayer.toggle()
+                return
             }
+            addTextWithFrame(url: url, appName: "Hello Appnap")
+        }
+    }
+    
+    func addTextWithFrame(url: URL, appName: String) {
+        VideoGenerator.current.addTextWithFrame(videoURL: url, name: appName) { riskUrl in
+            loading.toggle()
+            if let goodUrl = riskUrl {
+                PhotoMergerView.finalMoviePath = goodUrl
+            } else {
+                PhotoMergerView.finalMoviePath = nil
+            }
+            showVideoPlayer.toggle()
         }
     }
 }

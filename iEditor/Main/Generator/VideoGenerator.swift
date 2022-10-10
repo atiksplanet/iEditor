@@ -11,6 +11,11 @@ import AVFoundation
 public class VideoGenerator: NSObject {
     static var current = VideoGenerator()
     
+    typealias Completion = (URL?, Error?) -> Void
+    
+    let setVideoQualityForExporter = AVAssetExportPresetHighestQuality
+    let defaultSize = CGSize(width: 1920, height: 1080) // Default video size
+    
     /// Public enum type to represent the video generator's available modes
     ///
     /// - single: a single type generates a video from a single image and audio files
@@ -1237,3 +1242,561 @@ public class VideoGenerator: NSObject {
     }
 }
 
+extension VideoGenerator {
+    func addTextWithFrame(videoURL: URL, name: String, onComplete: @escaping (URL?) -> Void) {
+        let asset = AVURLAsset(url: videoURL)
+        let composition = AVMutableComposition()
+        
+        guard
+            let compositionTrack = composition.addMutableTrack(
+                withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+            let assetTrack = asset.tracks(withMediaType: .video).first
+        else {
+            print("Something is wrong with the asset.")
+            onComplete(nil)
+            return
+        }
+        
+        do {
+            let timeRange = CMTimeRange(start: .zero, duration: asset.duration)
+            try compositionTrack.insertTimeRange(timeRange, of: assetTrack, at: .zero)
+            
+            if let audioAssetTrack = asset.tracks(withMediaType: .audio).first,
+               let compositionAudioTrack = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try compositionAudioTrack.insertTimeRange(
+                    timeRange,
+                    of: audioAssetTrack,
+                    at: .zero)
+            }
+        } catch {
+            print(error)
+            onComplete(nil)
+            return
+        }
+        
+        compositionTrack.preferredTransform = assetTrack.preferredTransform
+        let videoInfo = orientation(from: assetTrack.preferredTransform)
+        
+        let videoSize: CGSize
+        if videoInfo.isPortrait {
+            videoSize = CGSize(
+                width: assetTrack.naturalSize.height,
+                height: assetTrack.naturalSize.width)
+        } else {
+            videoSize = assetTrack.naturalSize
+        }
+        
+        let backgroundLayer = CALayer()
+        backgroundLayer.frame = CGRect(origin: .zero, size: videoSize)
+        let videoLayer = CALayer()
+        videoLayer.frame = CGRect(origin: .zero, size: videoSize)
+        let overlayLayer = CALayer()
+        overlayLayer.frame = CGRect(origin: .zero, size: videoSize)
+        
+        //backgroundLayer.backgroundColor = UIColor.red.cgColor
+        videoLayer.frame = CGRect(
+            x: 10,
+            y: 10,
+            width: videoSize.width - 20,
+            height: videoSize.height - 20)
+        
+        backgroundLayer.contents = UIImage(named: "background")?.cgImage
+        backgroundLayer.contentsGravity = .resizeAspectFill
+        
+        //addConfetti(to: overlayLayer)
+        //addImage(to: overlayLayer, videoSize: videoSize)
+        
+        add(
+            text: name,
+            to: overlayLayer,
+            videoSize: videoSize)
+        
+        let outputLayer = CALayer()
+        outputLayer.frame = CGRect(origin: .zero, size: videoSize)
+        outputLayer.addSublayer(backgroundLayer)
+        outputLayer.addSublayer(videoLayer)
+        outputLayer.addSublayer(overlayLayer)
+        
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = videoSize
+        videoComposition.frameDuration = CMTime(value: 1, timescale: asset.duration.timescale)
+        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+            postProcessingAsVideoLayer: videoLayer,
+            in: outputLayer)
+        
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(
+            start: .zero,
+            duration: composition.duration)
+        
+        let layerInstruction = compositionLayerInstruction(
+            for: compositionTrack,
+            assetTrack: assetTrack)
+        instruction.layerInstructions = [layerInstruction]
+        
+        videoComposition.instructions = [instruction]
+        
+        guard let export = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetHighestQuality)
+        else {
+            print("Cannot create export session.")
+            onComplete(nil)
+            return
+        }
+        
+        let videoName = UUID().uuidString
+        let exportURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(videoName)
+            .appendingPathExtension(".mp4")
+        
+        export.videoComposition = videoComposition
+        export.outputFileType = .mp4
+        export.outputURL = exportURL
+        print("Exporting...")
+        export.exportAsynchronously {
+            DispatchQueue.main.async {
+                switch export.status {
+                case .completed:
+                    onComplete(exportURL)
+                default:
+                    print("Something went wrong during export.")
+                    print(export.error ?? "unknown error")
+                    onComplete(nil)
+                    break
+                }
+            }
+        }
+    }
+    
+    private func addImage(to layer: CALayer, videoSize: CGSize) {
+        let image = UIImage(named: "overlay")!
+        let imageLayer = CALayer()
+        
+        let aspect: CGFloat = image.size.width / image.size.height
+        let width = videoSize.width
+        let height = width / aspect
+        imageLayer.frame = CGRect(
+            x: 0,
+            y: -height * 0.15,
+            width: width,
+            height: height)
+        
+        imageLayer.contents = image.cgImage
+        layer.addSublayer(imageLayer)
+    }
+    
+    private func add(text: String, to layer: CALayer, videoSize: CGSize) {
+        let attributedText = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: UIFont(name: "ArialRoundedMTBold", size: 60) as Any,
+                .foregroundColor: UIColor.blue,
+                .strokeColor: UIColor.white,
+                .strokeWidth: -3])
+        
+        let textLayer = CATextLayer()
+        textLayer.string = attributedText
+        textLayer.shouldRasterize = true
+        textLayer.rasterizationScale = UIScreen.main.scale
+        textLayer.backgroundColor = UIColor.clear.cgColor
+        textLayer.alignmentMode = .center
+        
+        textLayer.frame = CGRect(
+            x: 0,
+            y: videoSize.height * 0.66,
+            width: videoSize.width,
+            height: 150)
+        textLayer.displayIfNeeded()
+        
+        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = 0.8
+        scaleAnimation.toValue = 1.2
+        scaleAnimation.duration = 0.5
+        scaleAnimation.repeatCount = .greatestFiniteMagnitude
+        scaleAnimation.autoreverses = true
+        scaleAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        
+        scaleAnimation.beginTime = AVCoreAnimationBeginTimeAtZero
+        scaleAnimation.isRemovedOnCompletion = false
+        textLayer.add(scaleAnimation, forKey: "scale")
+        
+        layer.addSublayer(textLayer)
+    }
+    
+    private func orientation(from transform: CGAffineTransform) -> (orientation: UIImage.Orientation, isPortrait: Bool) {
+        var assetOrientation = UIImage.Orientation.up
+        var isPortrait = false
+        if transform.a == 0 && transform.b == 1.0 && transform.c == -1.0 && transform.d == 0 {
+            assetOrientation = .right
+            isPortrait = true
+        } else if transform.a == 0 && transform.b == -1.0 && transform.c == 1.0 && transform.d == 0 {
+            assetOrientation = .left
+            isPortrait = true
+        } else if transform.a == 1.0 && transform.b == 0 && transform.c == 0 && transform.d == 1.0 {
+            assetOrientation = .up
+        } else if transform.a == -1.0 && transform.b == 0 && transform.c == 0 && transform.d == -1.0 {
+            assetOrientation = .down
+        }
+        
+        return (assetOrientation, isPortrait)
+    }
+    
+    private func compositionLayerInstruction(for track: AVCompositionTrack, assetTrack: AVAssetTrack) -> AVMutableVideoCompositionLayerInstruction {
+        let instruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        let transform = assetTrack.preferredTransform
+        
+        instruction.setTransform(transform, at: .zero)
+        
+        return instruction
+    }
+    
+    private func addConfetti(to layer: CALayer) {
+        let images: [UIImage] = (0...5).map { UIImage(named: "confetti\($0)")! }
+        let colors: [UIColor] = [.systemGreen, .systemRed, .systemBlue, .systemPink, .systemOrange, .systemPurple, .systemYellow]
+        let cells: [CAEmitterCell] = (0...16).map { _ in
+            let cell = CAEmitterCell()
+            cell.contents = images.randomElement()?.cgImage
+            cell.birthRate = 3
+            cell.lifetime = 12
+            cell.lifetimeRange = 0
+            cell.velocity = CGFloat.random(in: 100...200)
+            cell.velocityRange = 0
+            cell.emissionLongitude = 0
+            cell.emissionRange = 0.8
+            cell.spin = 4
+            cell.color = colors.randomElement()?.cgColor
+            cell.scale = CGFloat.random(in: 0.2...0.8)
+            return cell
+        }
+        
+        let emitter = CAEmitterLayer()
+        emitter.emitterPosition = CGPoint(x: layer.frame.size.width / 2, y: layer.frame.size.height + 5)
+        emitter.emitterShape = .line
+        emitter.emitterSize = CGSize(width: layer.frame.size.width, height: 2)
+        emitter.emitterCells = cells
+        
+        layer.addSublayer(emitter)
+    }
+}
+
+extension VideoGenerator {
+    func mergeWithAnimation(arrayVideos:[AVAsset], completion:@escaping Completion) -> Void {
+        doMerge(arrayVideos: arrayVideos, animation: true, completion: completion)
+    }
+    
+    func ApplyFilter(video: AVAsset, filter: String, completion:@escaping Completion) -> Void {
+        // Init composition
+        let mixComposition = AVMutableComposition.init()
+        
+        // Get video track
+        guard let videoTrack = video.tracks(withMediaType: AVMediaType.video).first else {
+            completion(nil, nil)
+            return
+        }
+        
+        _ = videoTrack.naturalSize
+        let insertTime = CMTime.zero
+        
+        // Init video & audio composition track
+        let videoCompositionTrack = mixComposition.addMutableTrack(withMediaType: AVMediaType.video,
+                                                                   preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
+        
+        let startTime = CMTime.zero
+        let duration = video.duration
+        
+        do {
+            // Add video track to video composition at specific time
+            try videoCompositionTrack?.insertTimeRange(CMTimeRangeMake(start: startTime, duration: duration),
+                                                       of: videoTrack,
+                                                       at: insertTime)
+        }
+        catch {
+            print("Load track error \(error)")
+        }
+        /*
+         // Init layer instruction
+         let layerInstruction = videoCompositionInstructionForTrack(track: videoCompositionTrack!,
+         asset: video,
+         standardSize: outputSize,
+         atTime: insertTime)
+         
+         // Init main instruction
+         let mainInstruction = AVMutableVideoCompositionInstruction()
+         mainInstruction.timeRange = CMTimeRangeMake(start: insertTime, duration: duration)
+         mainInstruction.layerInstructions = [layerInstruction]
+         
+         // Init layer composition
+         let layerComposition = AVMutableVideoComposition()
+         layerComposition.instructions = [mainInstruction]
+         layerComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
+         layerComposition.renderSize = outputSize
+         */
+        let composition = AVVideoComposition(asset: video, applyingCIFiltersWithHandler: { request in
+            /*
+             // Clamp to avoid blurring transparent pixels at the image edges
+             let source = request.sourceImage.clampedToExtent()
+             filter.setValue(source, forKey: kCIInputImageKey)
+             
+             // Vary filter parameters based on video timing
+             let seconds = CMTimeGetSeconds(request.compositionTime)
+             filter.setValue(seconds * 10.0, forKey: kCIInputRadiusKey)
+             
+             // Crop the blurred output to the bounds of the original image
+             let output = filter.outputImage!.cropped(to: request.sourceImage.extent)
+             */
+            let filtered = request.sourceImage.applyingFilter(filter, parameters: [:])
+            // Provide the filter output to the composition
+            request.finish(with: filtered, context: nil)
+        })
+        
+        let path = NSTemporaryDirectory().appending("AfterFilterVideo.mp4")
+        let exportURL = URL.init(fileURLWithPath: path)
+        
+        // Check exist and remove old file
+        FileManager.default.removeItemIfExisted(exportURL)
+        
+        // Init exporter
+        let exporter = AVAssetExportSession.init(asset: mixComposition, presetName: setVideoQualityForExporter)
+        exporter?.outputURL = exportURL
+        exporter?.outputFileType = AVFileType.mp4
+        exporter?.shouldOptimizeForNetworkUse = true
+        exporter?.videoComposition = composition
+        
+        // Do export
+        exporter?.exportAsynchronously(completionHandler: {
+            DispatchQueue.main.async {
+                self.exportDidFinish(exporter: exporter, videoURL: exportURL, completion: completion)
+            }
+        })
+    }
+    
+    private func doMerge(arrayVideos:[AVAsset], animation:Bool, completion:@escaping Completion) -> Void {
+        var insertTime = CMTime.zero
+        var arrayLayerInstructions:[AVMutableVideoCompositionLayerInstruction] = []
+        var outputSize = CGSize.init(width: 0, height: 0)
+        
+        // Determine video output size
+        for videoAsset in arrayVideos {
+            let videoTrack = videoAsset.tracks(withMediaType: AVMediaType.video)[0]
+            
+            let assetInfo = orientationFromTransform(transform: videoTrack.preferredTransform)
+            
+            var videoSize = videoTrack.naturalSize
+            if assetInfo.isPortrait == true {
+                videoSize.width = videoTrack.naturalSize.height
+                videoSize.height = videoTrack.naturalSize.width
+            }
+            
+            if videoSize.height > outputSize.height {
+                outputSize = videoSize
+            }
+        }
+        
+        if outputSize.width == 0 || outputSize.height == 0 {
+            outputSize = defaultSize
+        }
+        
+        guard let bgAudioURL = Bundle.main.url(forResource: "mixaund-bright-morning", withExtension: "mp3") else {
+            return
+        }
+        let silenceAsset = AVAsset(url: bgAudioURL)
+        let silenceSoundTrack = silenceAsset.tracks(withMediaType: AVMediaType.audio).first
+        var audioTime = CMTime.zero
+        
+        // Init composition
+        let mixComposition = AVMutableComposition.init()
+        let audioCompositionTrack = mixComposition.addMutableTrack(withMediaType: AVMediaType.audio,
+                                                                   preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
+        let audioTrack:AVAssetTrack? = silenceSoundTrack
+        //print("audioTime: \(silenceAsset.duration.seconds)")
+        
+        for videoAsset in arrayVideos {
+            // Get video track
+            guard let videoTrack = videoAsset.tracks(withMediaType: AVMediaType.video).first else { continue }
+            
+            // Get audio track
+            
+            //            if videoAsset.tracks(withMediaType: AVMediaType.audio).count > 0 {
+            //                audioTrack = videoAsset.tracks(withMediaType: AVMediaType.audio).first
+            //            }
+            //            else {
+            //                //audioTrack = silenceSoundTrack
+            //            }
+            
+            // Init video & audio composition track
+            let videoCompositionTrack = mixComposition.addMutableTrack(withMediaType: AVMediaType.video,
+                                                                       preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
+            
+            
+            do {
+                let startTime = CMTime.zero
+                let duration = videoAsset.duration
+                //print("duration: \(duration.seconds)")
+                
+                // Add video track to video composition at specific time
+                try videoCompositionTrack?.insertTimeRange(CMTimeRangeMake(start: startTime, duration: duration),
+                                                           of: videoTrack,
+                                                           at: insertTime)
+                
+                // Add instruction for video track
+                let layerInstruction = videoCompositionInstructionForTrack(track: videoCompositionTrack!,
+                                                                           asset: videoAsset,
+                                                                           standardSize: outputSize,
+                                                                           atTime: insertTime)
+                
+                // Hide video track before changing to new track
+                let endTime = CMTimeAdd(insertTime, duration)
+                //print("endTime: \(endTime.seconds)")
+                
+                if animation {
+                    let timeScale = videoAsset.duration.timescale
+                    let durationAnimation = CMTime.init(seconds: 1, preferredTimescale: timeScale)
+                    
+                    layerInstruction.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: CMTimeRange.init(start: endTime, duration: durationAnimation))
+                }
+                else {
+                    layerInstruction.setOpacity(0, at: endTime)
+                }
+                
+                arrayLayerInstructions.append(layerInstruction)
+                
+                // Increase the insert time
+                insertTime = CMTimeAdd(insertTime, duration)
+                //print("insertTime: \(insertTime.seconds)")
+                audioTime = insertTime
+            }
+            catch {
+                debugPrint("Load track error")
+            }
+        }
+        
+        // Add audio track to audio composition at specific time
+        //print("audioTime: \(audioTime.seconds)")
+        
+        if let audioTrack = audioTrack {
+            do {
+                try audioCompositionTrack?.insertTimeRange(CMTimeRangeMake(start: CMTime.zero, duration: audioTime),
+                                                           of: audioTrack,
+                                                           at: CMTime.zero)
+            }
+            catch {
+                debugPrint("Load track error")
+            }
+        }
+        
+        // Main video composition instruction
+        let mainInstruction = AVMutableVideoCompositionInstruction()
+        mainInstruction.timeRange = CMTimeRangeMake(start: CMTime.zero, duration: insertTime)
+        mainInstruction.layerInstructions = arrayLayerInstructions
+        
+        // Main video composition
+        let mainComposition = AVMutableVideoComposition()
+        mainComposition.instructions = [mainInstruction]
+        mainComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
+        mainComposition.renderSize = outputSize
+        //mainComposition.
+        
+        // Export to file
+        
+        var path = "";
+        
+        if arrayVideos.count == 2 {
+            path = NSTemporaryDirectory().appending("mergedVideo.mp4");
+        }else{
+            let ticks = Date().ticks
+            path = NSTemporaryDirectory().appending("\(ticks)mergedVideo.mp4");
+        }
+        let exportURL = URL.init(fileURLWithPath: path)
+        
+        // Remove file if existed
+        FileManager.default.removeItemIfExisted(exportURL)
+        
+        // Init exporter
+        let exporter = AVAssetExportSession.init(asset: mixComposition, presetName: setVideoQualityForExporter)
+        exporter?.outputURL = exportURL
+        exporter?.outputFileType = AVFileType.mp4
+        exporter?.shouldOptimizeForNetworkUse = true
+        exporter?.videoComposition = mainComposition
+        
+        // Do export
+        exporter?.exportAsynchronously(completionHandler: {
+            DispatchQueue.main.async {
+                self.exportDidFinish(exporter: exporter, videoURL: exportURL, completion: completion)
+            }
+        })
+        
+    }
+    
+    fileprivate func exportDidFinish(exporter:AVAssetExportSession?, videoURL:URL, completion:@escaping Completion) -> Void {
+        if exporter?.status == AVAssetExportSession.Status.completed {
+            // debugPrint("Exported file: \(videoURL.absoluteString)")
+            completion(videoURL,nil)
+        }
+        else if exporter?.status == AVAssetExportSession.Status.failed {
+            completion(videoURL,exporter?.error)
+        }
+    }
+    
+    fileprivate func orientationFromTransform(transform: CGAffineTransform) -> (orientation: UIImage.Orientation, isPortrait: Bool) {
+        var assetOrientation = UIImage.Orientation.up
+        var isPortrait = false
+        if transform.a == 0 && transform.b == 1.0 && transform.c == -1.0 && transform.d == 0 {
+            assetOrientation = .right
+            isPortrait = true
+        } else if transform.a == 0 && transform.b == -1.0 && transform.c == 1.0 && transform.d == 0 {
+            assetOrientation = .left
+            isPortrait = true
+        } else if transform.a == 1.0 && transform.b == 0 && transform.c == 0 && transform.d == 1.0 {
+            assetOrientation = .up
+        } else if transform.a == -1.0 && transform.b == 0 && transform.c == 0 && transform.d == -1.0 {
+            assetOrientation = .down
+        }
+        return (assetOrientation, isPortrait)
+    }
+    
+    fileprivate func videoCompositionInstructionForTrack(track: AVCompositionTrack, asset: AVAsset, standardSize:CGSize, atTime: CMTime) -> AVMutableVideoCompositionLayerInstruction {
+        let instruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        let assetTrack = asset.tracks(withMediaType: AVMediaType.video)[0]
+        
+        let transform = assetTrack.preferredTransform
+        let assetInfo = orientationFromTransform(transform: transform)
+        
+        var aspectFillRatio:CGFloat = 1
+        if assetTrack.naturalSize.height < assetTrack.naturalSize.width {
+            aspectFillRatio = standardSize.height / assetTrack.naturalSize.height
+        }
+        else {
+            aspectFillRatio = standardSize.width / assetTrack.naturalSize.width
+        }
+        
+        if assetInfo.isPortrait {
+            let scaleFactor = CGAffineTransform(scaleX: aspectFillRatio, y: aspectFillRatio)
+            
+            let posX = standardSize.width/2 - (assetTrack.naturalSize.height * aspectFillRatio)/2
+            let posY = standardSize.height/2 - (assetTrack.naturalSize.width * aspectFillRatio)/2
+            let moveFactor = CGAffineTransform(translationX: posX, y: posY)
+            
+            instruction.setTransform(assetTrack.preferredTransform.concatenating(scaleFactor).concatenating(moveFactor), at: atTime)
+            
+        } else {
+            let scaleFactor = CGAffineTransform(scaleX: aspectFillRatio, y: aspectFillRatio)
+            
+            let posX = standardSize.width/2 - (assetTrack.naturalSize.width * aspectFillRatio)/2
+            let posY = standardSize.height/2 - (assetTrack.naturalSize.height * aspectFillRatio)/2
+            let moveFactor = CGAffineTransform(translationX: posX, y: posY)
+            
+            var concat = assetTrack.preferredTransform.concatenating(scaleFactor).concatenating(moveFactor)
+            
+            if assetInfo.orientation == .down {
+                let fixUpsideDown = CGAffineTransform(rotationAngle: CGFloat(Double.pi))
+                concat = fixUpsideDown.concatenating(scaleFactor).concatenating(moveFactor)
+            }
+            
+            instruction.setTransform(concat, at: atTime)
+        }
+        return instruction
+    }
+}
