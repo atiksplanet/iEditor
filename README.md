@@ -1,2 +1,2 @@
 # iEditor
-Video Editor App for iPhone
+Video Editor App for iPhone using SwiftUI
